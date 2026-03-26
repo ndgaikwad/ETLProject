@@ -1,0 +1,85 @@
+name: SSIS and DACPAC CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+    
+    env:
+      # Project Paths
+      SSIS_PROJ_PATH: "MySSISProject/MySSISProject.dtproj"
+      ISPAC_OUTPUT: "bin/Release/MyProject.ispac"
+      DACPAC_PATH: "MyDatabase/bin/Release/MyDatabase.dacpac"
+      
+      # SQL Configuration
+      SQL_SERVER: "${{ secrets.SQL_SERVER_NAME }}"
+      TARGET_DB: "MyUserDatabase"
+      SSIS_FOLDER: "Production"
+      SSIS_PROJECT_NAME: "MySSISProject"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build SSIS and DACPAC
+        shell: cmd
+        run: |
+          :: Build SSIS (.ispac)
+          SSISBuild.exe -p:"${{ env.SSIS_PROJ_PATH }}" -c:Release -o:"bin/Release"
+          :: Build DACPAC (Assumes MSBuild is in path)
+          msbuild MyDatabase/MyDatabase.sqlproj /p:Configuration=Release
+
+      - name: Grant Permissions (SQL Auth)
+        shell: powershell
+        run: |
+          $runnerUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $connStr = "Server=${{ env.SQL_SERVER }};User ID=${{ secrets.SQL_USER }};Password=${{ secrets.SQL_PASS }};"
+          
+          Write-Host "Granting permissions to $runnerUser..."
+          Invoke-Sqlcmd -ConnectionString $connStr -Query "EXEC master.dbo.sp_ManageRunnerPermissions @LoginName='$runnerUser', @Action='GRANT', @UserDB='${{ env.TARGET_DB }}'"
+
+      - name: Deploy SSIS Project (Windows Auth)
+        shell: powershell
+        run: |
+          $ispacBytes = [System.IO.File]::ReadAllBytes("${{ env.ISPAC_OUTPUT }}")
+          $connStr = "Server=${{ env.SQL_SERVER }};Database=SSISDB;Integrated Security=True;"
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          try {
+              $conn.Open()
+              $cmd = $conn.CreateCommand()
+              
+              # Ensure Folder Exists
+              $cmd.CommandText = "IF NOT EXISTS (SELECT 1 FROM [catalog].[folders] WHERE name = @f) EXEC [catalog].[create_folder] @folder_name=@f"
+              $cmd.Parameters.Add("@f", [System.Data.SqlDbType]::NVarChar).Value = "${{ env.SSIS_FOLDER }}"
+              $cmd.ExecuteNonQuery()
+
+              # Deploy
+              $cmd.CommandText = "EXEC [catalog].[deploy_project] @folder_name=@f, @project_name=@p, @Project_Stream=@b"
+              $cmd.Parameters.Add("@p", [System.Data.SqlDbType]::NVarChar).Value = "${{ env.SSIS_PROJECT_NAME }}"
+              $cmd.Parameters.Add("@b", [System.Data.SqlDbType]::VarBinary, -1).Value = $ispacBytes
+              $cmd.ExecuteNonQuery()
+              Write-Host "SSIS Deployment Successful."
+          } finally { $conn.Close() }
+
+      - name: Deploy DACPAC (Windows Auth)
+        shell: powershell
+        run: |
+          SqlPackage.exe /Action:Publish `
+            /SourceFile:"${{ env.DACPAC_PATH }}" `
+            /TargetServerName:"${{ env.SQL_SERVER }}" `
+            /TargetDatabaseName:"${{ env.TARGET_DB }}" `
+            /TargetIntegratedSecurity:True `
+            /TargetTrustServerCertificate:True
+
+      - name: Revoke and Cleanup (SQL Auth)
+        if: always() # IMPORTANT: Ensures cleanup even if deployment fails
+        shell: powershell
+        run: |
+          $runnerUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $connStr = "Server=${{ env.SQL_SERVER }};User ID=${{ secrets.SQL_USER }};Password=${{ secrets.SQL_PASS }};"
+          
+          Write-Host "Revoking permissions from $runnerUser..."
+          Invoke-Sqlcmd -ConnectionString $connStr -Query "EXEC master.dbo.sp_ManageRunnerPermissions @LoginName='$runnerUser', @Action='REVOKE', @UserDB='${{ env.TARGET_DB }}'"

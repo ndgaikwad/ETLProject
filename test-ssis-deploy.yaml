@@ -1,0 +1,91 @@
+name: SSIS Secured Deployment
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      SQL_SERVER: "${{ secrets.SQL_SERVER_NAME }}"
+      ISPAC_PATH: "bin/Release/MyProject.ispac"
+
+    steps:
+      - name: Verify Stored Procedure Signature
+        shell: powershell
+        run: |
+          $connStr = "Server=${{ secrets.SQL_SERVER_NAME }};Database=master;User ID=${{ secrets.SQL_USER }};Password=${{ secrets.SQL_PASS }};"
+          
+          # T-SQL to check if the procedure is signed and the signature is valid
+          # sys.fn_check_object_signatures returns is_signature_valid = 1 only if code matches the signature
+          $query = @"
+            DECLARE @cert_thumbprint VARBINARY(20);
+            SELECT @cert_thumbprint = thumbprint FROM sys.certificates WHERE name = 'SSISDeploySignerCert';
+            
+            SELECT is_signed, is_signature_valid 
+            FROM sys.fn_check_object_signatures('certificate', @cert_thumbprint)
+            WHERE entity_id = OBJECT_ID('dbo.sp_ManageRunnerPermissions');
+          "@
+          
+          $result = Invoke-Sqlcmd -ConnectionString $connStr -Query $query
+          
+          if ($null -eq $result) {
+              Write-Error "CRITICAL: Stored procedure 'dbo.sp_ManageRunnerPermissions' not found!"
+              exit 1
+          }
+          
+          if ($result.is_signed -eq 1 -and $result.is_signature_valid -eq 1) {
+              Write-Host "SUCCESS: Stored procedure signature is VALID and verified."
+          }
+          else {
+              Write-Error "SECURITY ALERT: Stored procedure signature is INVALID or MISSING. The code may have been tampered with."
+              exit 1
+          }
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Grant SSIS Permissions
+        shell: powershell
+        run: |
+          $runnerUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $connStr = "Server=${{ env.SQL_SERVER }};User ID=${{ secrets.SQL_USER }};Password=${{ secrets.SQL_PASS }};"
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          $conn.Open()
+          $cmd = $conn.CreateCommand()
+          $cmd.CommandText = "EXEC dbo.sp_ManageRunnerPermissions @LoginName=@u, @Action='GRANT'"
+          $cmd.Parameters.Add("@u", [System.Data.SqlDbType]::NVarChar).Value = $runnerUser
+          $cmd.ExecuteNonQuery()
+          $conn.Close()
+          Write-Host "Permissions granted to $runnerUser"
+
+      - name: Deploy SSIS Project
+        shell: powershell
+        run: |
+          $ispacBytes = [System.IO.File]::ReadAllBytes("${{ env.ISPAC_PATH }}")
+          # Uses Integrated Security (Inherits the Runner's authorized Windows Identity)
+          $connStr = "Server=${{ env.SQL_SERVER }};Database=SSISDB;Integrated Security=True;"
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          try {
+              $conn.Open()
+              $cmd = $conn.CreateCommand()
+              $cmd.CommandText = "EXEC [catalog].[deploy_project] @folder_name='Prod', @project_name='MyProject', @Project_Stream=@b"
+              $cmd.Parameters.Add("@b", [System.Data.SqlDbType]::VarBinary, -1).Value = $ispacBytes
+              $cmd.ExecuteNonQuery()
+          } finally { $conn.Close() }
+
+      - name: Revoke SSIS Permissions
+        if: always() # Runs even if deployment fails
+        shell: powershell
+        run: |
+          $runnerUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $connStr = "Server=${{ env.SQL_SERVER }};User ID=${{ secrets.SQL_USER }};Password=${{ secrets.SQL_PASS }};"
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          $conn.Open()
+          $cmd = $conn.CreateCommand()
+          $cmd.CommandText = "EXEC dbo.sp_ManageRunnerPermissions @LoginName=@u, @Action='REVOKE'"
+          $cmd.Parameters.Add("@u", [System.Data.SqlDbType]::NVarChar).Value = $runnerUser
+          $cmd.ExecuteNonQuery()
+          $conn.Close()
+          Write-Host "Permissions revoked from $runnerUser"

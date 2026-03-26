@@ -1,0 +1,54 @@
+C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\SQLDB\DAC
+1. Required Files to Copy
+To ensure the deployment works without "Missing Reference" errors, you should copy the following DLLs from a machine that has SSDT/DacFx installed into a folder in your repo (e.g., /tools/dacfx/):
+Microsoft.SqlServer.Dac.dll: The primary API for DACPAC operations.
+Microsoft.SqlServer.TransactSql.ScriptDom.dll: Handles SQL parsing and script generation.
+Microsoft.Data.Tools.Schema.Sql.dll: Core logic for the SQL Server schema model.
+Microsoft.SqlServer.Dac.Extensions.dll: (Optional) Needed only if you use custom deployment contributors. 
+Microsoft Learn
+Microsoft Learn
+
+
+- name: Deploy DACPAC using Repo DLLs
+  shell: powershell
+  run: |
+    # 1. Define Paths
+    $dacpacFile = "bin/Release/MyDatabase.dacpac"
+    $targetDb = "${{ env.TARGET_DB }}"
+    $server = "${{ secrets.SQL_SERVER_NAME }}"
+
+    # 1. Define relative path from the repo root
+    $dacpacFile = "$pwd\tools\dacfx\Microsoft.SqlServer.Dac.dll"
+    
+    # 2. Load the Assembly
+    if (-not (Test-Path $dacDllPath)) {
+      Write-Error "DacFx DLL not found at $dacDllPath"
+      exit 1
+    }
+    Add-Type -Path $dacDllPath
+
+    # 3. Initialize DacServices and Load Package
+    # Uses Integrated Security (Inherits the Runner's Windows Identity)
+    $connStr = "Server=$server;Database=$targetDb;Integrated Security=True;"
+    $dacService = New-Object Microsoft.SqlServer.Dac.DacServices($connStr)
+    $dp = [Microsoft.SqlServer.Dac.DacPackage]::Load($dacpacFile)
+
+    # 4. Set Deployment Options
+    $options = New-Object Microsoft.SqlServer.Dac.DacDeployOptions
+    $options.BlockOnPossibleDataLoss = $false  # Set to true for production safety
+    $options.IncludeCompositeObjects = $true
+
+    # 5. Execute Deployment
+    try {
+        Write-Host "Deploying DACPAC to $targetDb on $server..."
+        # The 'true' parameter allows upgrading an existing database
+        $dacService.Deploy($dp, $targetDb, $true, $options)
+        Write-Host "Deployment Successful!"
+    }
+    catch {
+        Write-Error "Deployment Failed: $($_.Exception.Message)"
+        exit 1
+    }
+    finally {
+        if ($dp) { $dp.Dispose() }
+    }

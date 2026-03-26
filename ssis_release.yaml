@@ -1,0 +1,73 @@
+name: SSIS CD - SQL Authentication
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # Windows self-hosted runner
+    
+    env:
+      SQL_SERVER: "${{ secrets.SQL_SERVER_NAME }}"
+      SQL_USER: "${{ secrets.SQL_USER }}"
+      SQL_PASS: "${{ secrets.SQL_PASSWORD }}"
+      ISPAC_PATH: "bin/Release/MyProject.ispac"
+      FOLDER_NAME: "Production"
+      PROJECT_NAME: "MySSISProject"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to SSISDB
+        shell: powershell
+        run: |
+          # 1. Read the .ispac file
+          if (-not (Test-Path "${{ env.ISPAC_PATH }}")) { 
+              Write-Error "ISPAC file not found at ${{ env.ISPAC_PATH }}"; exit 1 
+          }
+          $ispacBytes = [System.IO.File]::ReadAllBytes("${{ env.ISPAC_PATH }}")
+          
+          # 2. Connection Setup
+          $connStr = "Server=${{ env.SQL_SERVER }};Database=SSISDB;User ID=${{ env.SQL_USER }};Password=${{ env.SQL_PASS }};"
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          
+          try {
+              $conn.Open()
+              $cmd = $conn.CreateCommand()
+              
+              # 3. Check if Folder exists; if not, create it
+              Write-Host "Checking for folder: ${{ env.FOLDER_NAME }}..."
+              $cmd.CommandText = @"
+                IF NOT EXISTS (SELECT 1 FROM [catalog].[folders] WHERE name = @folder)
+                BEGIN
+                    EXEC [catalog].[create_folder] @folder_name = @folder;
+                    SELECT 'Created' as Status;
+                END
+                ELSE SELECT 'Exists' as Status;
+                
+              $cmd.Parameters.Clear()
+              $cmd.Parameters.Add("@folder", [System.Data.SqlDbType]::NVarChar, 128).Value = "${{ env.FOLDER_NAME }}"
+              $status = $cmd.ExecuteScalar()
+              Write-Host "Folder status: $status"
+
+              # 4. Deploy the Project
+              Write-Host "Deploying ${{ env.PROJECT_NAME }} to SSISDB..."
+              $cmd.CommandText = "EXEC [catalog].[deploy_project] @folder_name=@folder, @project_name=@project, @Project_Stream=@binary"
+              
+              $cmd.Parameters.Clear()
+              $cmd.Parameters.Add("@folder", [System.Data.SqlDbType]::NVarChar, 128).Value = "${{ env.FOLDER_NAME }}"
+              $cmd.Parameters.Add("@project", [System.Data.SqlDbType]::NVarChar, 128).Value = "${{ env.PROJECT_NAME }}"
+              $cmd.Parameters.Add("@binary", [System.Data.SqlDbType]::VarBinary, -1).Value = $ispacBytes
+              
+              $cmd.ExecuteNonQuery()
+              Write-Host "Deployment Successful!"
+          }
+          catch {
+              Write-Error "Deployment Failed: $($_.Exception.Message)"
+              exit 1
+          }
+          finally {
+              $conn.Close()
+          }
