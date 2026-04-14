@@ -1,0 +1,57 @@
+using System;
+using System.Data;
+using System.Data.Odbc;
+using System.Data.SqlClient;
+using Microsoft.SqlServer.Dts.Runtime;
+
+public void Main()
+{
+    // 1. Get the full SQL query and destination table from Variables
+    string sourceQuery = Dts.Variables["User::SourceSQL"].Value.ToString();
+    string destTable = Dts.Variables["User::DestTable"].Value.ToString();
+
+	// Retrieve connection strings from Project Parameters
+    string snowConnStr = Dts.Connections["MyODBCConn"].ConnectionString;
+							Dts.Variables["$Project::SnowflakeConnectionString"].Value.ToString();
+    string sqlConnStr = Dts.Connections["MySQLConn"].ConnectionString;
+							Dts.Variables["$Project::SqlConnectionString"].Value.ToString();
+
+    string snowConnStr = "Dsn=SnowflakeDSN;Uid=myUser;Pwd=myPassword;";
+    string sqlConnStr = "Data Source=MyServer;Initial Catalog=MyDb;Integrated Security=SSPI;";
+
+    try
+    {
+        using (OdbcConnection snowConn = new OdbcConnection(snowConnStr))
+        {
+            snowConn.Open();
+            OdbcCommand cmd = new OdbcCommand(sourceQuery, snowConn);
+
+            using (OdbcDataReader reader = cmd.ExecuteReader())
+            {
+                using (SqlBulkCopy bulkCopy = new SqlBulkCopy(sqlConnStr))
+                {
+                    bulkCopy.DestinationTableName = destTable;
+                    bulkCopy.BulkCopyTimeout = 0;
+                    bulkCopy.BatchSize = 10000;
+
+                    // 2. DYNAMIC MAPPING BY NAME
+                    // This maps the column name/alias in your SELECT to the matching name in SQL Server
+					// SQL Server will automatically handle 'ID' and 'LoadDate'.
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        string colName = reader.GetName(i);
+                        bulkCopy.ColumnMappings.Add(colName, colName);
+                    }
+
+                    bulkCopy.WriteToServer(reader);
+                }
+            }
+        }
+        Dts.TaskResult = (int)ScriptResults.Success;
+    }
+    catch (Exception ex)
+    {
+        Dts.Events.FireError(0, "Snowflake Bulk Load", ex.Message, "", 0);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+    }
+}
