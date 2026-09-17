@@ -1,0 +1,45 @@
+{
+    "snowflake": {
+        "account": "my_account",
+        "user": "etl_user",
+        "password": "password",
+        "warehouse": "ETL_WH",
+        "database": "SOURCE_DB",
+        "schema": "SOURCE_SCHEMA",
+        "role": "ETL_ROLE"
+    },
+
+    "sqlserver": {
+        "driver": "ODBC Driver 18 for SQL Server",
+        "server": "SQLSERVER01",
+        "port": "1433",
+        "database": "EDW",
+        "user": "etl_user",
+        "password": "password",
+        "encrypt": "no"
+    },
+
+    "pipelines": {
+        "CUSTOMER": {
+            "snowflake_sp": "SOURCE_DB.SOURCE_SCHEMA.SP_PREPARE_CUSTOMER",
+            "snowflake_sql": "SELECT CUSTOMER_ID, CUSTOMER_NAME, EMAIL, AMOUNT FROM SOURCE_DB.SOURCE_SCHEMA.CUSTOMER_EXPORT",
+
+            "stage_table": "dbo.RAW_CUSTOMER_STG",
+
+            "sqlserver_sp": "dbo.usp_Load_RAW_CUSTOMER",
+
+            "batch_size": 10000
+        },
+
+        "ORDERS": {
+            "snowflake_sp": "SOURCE_DB.SOURCE_SCHEMA.SP_PREPARE_ORDERS",
+            "snowflake_sql": "SELECT ORDER_ID, CUSTOMER_ID, ORDER_DATE, AMOUNT FROM SOURCE_DB.SOURCE_SCHEMA.ORDER_EXPORT",
+
+            "stage_table": "dbo.RAW_ORDER_STG",
+
+            "sqlserver_sp": "dbo.usp_Load_RAW_ORDER",
+
+            "batch_size": 20000
+        }
+    }
+}

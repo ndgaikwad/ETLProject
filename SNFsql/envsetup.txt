@@ -1,0 +1,24 @@
+1
+Open repo settings
+Go to your GitHub repository, click the 'Settings' tab (you need admin access to the repo). In the left sidebar, under 'Code and automation', click 'Environments'.
+2
+Create a new environment
+Click 'New environment'. Type a name exactly matching what your workflow references, e.g. 'stage', 'pre-prod', or 'prod' (case-sensitive, must match the `environment:` value in your YAML). Click 'Configure environment'. Repeat this for each environment you need.
+3
+Add protection rules (required reviewers)
+On the environment's configuration page, check 'Required reviewers' and add the people/teams who must approve before a deployment job targeting this environment runs. Recommended for 'pre-prod' and 'prod', usually skipped for 'stage' so it stays fast.
+4
+Restrict deployment branches (the release-branch gate)
+Under 'Deployment branches and tags', change 'No restriction' to 'Selected branches and tags', then click 'Add deployment branch or tag rule' and enter your pattern, e.g. 'release/*' or 'main'. This is what physically blocks a non-release branch from deploying to prod, even if someone edits the workflow file.
+5
+Optionally set a wait timer
+Under 'Wait timer', you can force a delay (in minutes) before the job is allowed to proceed, even after approval — useful if you want a cooldown window on prod deploys. Skip this if not needed.
+6
+Add environment secrets
+Still on the environment's page, find the 'Environment secrets' section and click 'Add secret'. Enter a name (e.g. DB_CONNECTION_STRING) and its value for THIS environment. Repeat for each environment — use the same secret name across all of them (stage/pre-prod/prod) so your workflow's `${{ secrets.DB_CONNECTION_STRING }}` reference automatically resolves to the right value based on which environment the job targets.
+7
+Add environment variables (non-secret config)
+In the 'Environment variables' section (separate from secrets, visible in logs), add any non-sensitive per-environment values, e.g. REGION or TENANT_ID. Reference these in your workflow as `${{ vars.REGION }}`.
+8
+Reference the environment in your workflow
+In your workflow YAML, add `environment: prod` (or `environment: ${{ inputs.environment }}` for the dynamic dropdown pattern) to the job that deploys. GitHub will then apply that environment's approval gate, branch restriction, secrets, and variables automatically whenever that job runs.
