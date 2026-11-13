@@ -1,0 +1,26 @@
+WITH join_query
+AS 
+(SELECT 
+  SUM(s.total_amount) as total_amount,
+  p.product_name
+FROM 
+  sales_enr s 
+LEFT JOIN 
+  products_enr p 
+  ON s.product_id = p.product_id
+GROUP BY p.product_name),
+
+ranked_query 
+AS
+(SELECT * ,
+      DENSE_RANK() OVER(ORDER BY total_amount DESC) as ranking 
+FROM join_query) 
+
+
+SELECT * FROM ranked_query
+WHERE ranking <= :top
+
+
+
+
+

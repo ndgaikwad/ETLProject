@@ -1,0 +1,1 @@
+SELECT * FROM databricksansh.bronze.lookup_table
