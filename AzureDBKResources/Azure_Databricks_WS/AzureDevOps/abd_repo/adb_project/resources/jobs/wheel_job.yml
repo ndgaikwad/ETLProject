@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    wheel_job:
+      name: wheel_job
+      tasks:
+        - task_key: wheel_notebook
+          notebook_task:
+            notebook_path: ../../src/notebooks/wheel_notebook.ipynb
+            source: WORKSPACE
+        - task_key: without_wheel
+          depends_on:
+            - task_key: wheel_notebook
+          notebook_task:
+            notebook_path: ../../src/notebooks/without_wheel_notbook.ipynb
+            source: WORKSPACE
+          environment_key: without_wheel_environment
+      queue:
+        enabled: true
+      environments:
+        - environment_key: without_wheel_environment
+          spec:
+            base_environment: /Workspace/Users/anshlambaaz@gmail.com/AzureDevOps/abd_repo/adb_project/src/env/mywheel.yaml
+      performance_target: PERFORMANCE_OPTIMIZED

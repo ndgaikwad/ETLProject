@@ -1,0 +1,3 @@
+SELECT * FROM azuredatabricks_catalog.ldp_medallion.dim_customers
+WHERE customer_city = :customer_city_param
+AND customers_updated_datetime >= '2026-01-01'

@@ -1,0 +1,41 @@
+CREATE TABLE dbo.OrdersNew (
+    OrderID INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerName NVARCHAR(100) NOT NULL,
+    ProductName NVARCHAR(100) NOT NULL,
+    Category NVARCHAR(50) NOT NULL,
+    Quantity INT NOT NULL,
+    UnitPrice DECIMAL(10,2) NOT NULL,
+    OrderDate DATE NOT NULL,
+    Status NVARCHAR(20) NOT NULL,
+    UpdatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET()
+);
+
+INSERT INTO dbo.OrdersNew
+(CustomerName, ProductName, Category, Quantity, UnitPrice, OrderDate, Status)
+VALUES
+('John Smith', 'Laptop', 'Electronics', 1, 1200.00, '2026-07-01', 'Delivered'),
+('Emma Johnson', 'Wireless Mouse', 'Electronics', 2, 35.99, '2026-07-02', 'Delivered'),
+('Michael Brown', 'Office Chair', 'Furniture', 1, 249.99, '2026-07-03', 'Shipped'),
+('Sophia Davis', 'Notebook Pack', 'Stationery', 5, 12.50, '2026-07-03', 'Delivered'),
+('William Wilson', 'Monitor', 'Electronics', 2, 299.99, '2026-07-04', 'Processing'),
+('Olivia Taylor', 'Desk Lamp', 'Furniture', 3, 45.00, '2026-07-05', 'Cancelled'),
+('James Anderson', 'Keyboard', 'Electronics', 2, 79.99, '2026-07-06', 'Shipped'),
+('Ava Thomas', 'USB-C Hub', 'Accessories', 1, 59.99, '2026-07-07', 'Delivered'),
+('Benjamin Moore', 'Standing Desk', 'Furniture', 1, 499.99, '2026-07-08', 'Processing'),
+('Charlotte Martin', 'External SSD', 'Storage', 2, 149.99, '2026-07-09', 'Delivered');
+
+
+INSERT INTO dbo.OrdersNew
+(CustomerName, ProductName, Category, Quantity, UnitPrice, OrderDate, Status)
+VALUES
+('Ansh John Smith', 'Laptop', 'Electronics', 1, 1200.00, '2026-07-01', 'Delivered'),
+('Ansh Emma Johnson', 'Wireless Mouse', 'Electronics', 2, 35.99, '2026-07-02', 'Delivered'),
+('Ansh Michael Brown', 'Office Chair', 'Furniture', 1, 249.99, '2026-07-03', 'Shipped');
+
+
+UPDATE OrdersNew
+SET CustomerName = 'Ansh Lamba',
+    UpdatedAt = SYSDATETIMEOFFSET()
+WHERE OrderID > 10
+
+

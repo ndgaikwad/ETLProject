@@ -1,0 +1,44 @@
+bundle:
+  name: adb_project
+  uuid: 569aaf31-1131-4512-9a2c-21eec164d627
+
+include:
+  - resources/*.yml
+  - resources/*/*.yml
+
+
+# Variable declarations. These variables are assigned in the dev/prod targets below.
+variables:
+  catalog:
+    description: The catalog to use
+  schema:
+    description: The schema to use
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://<your-databricks-workspace>.azuredatabricks.net
+    variables:
+      catalog: azuredatabricks_catalog
+      schema: gold
+    presets:
+      name_prefix: dev_${workspace.current_user.short_name}
+      source_linked_deployment: false
+
+  prod:
+    mode: production
+    workspace:
+      host: https://<your-databricks-workspace>.azuredatabricks.net
+      # We explicitly deploy to /Workspace/Users/anshlambaaz@gmail.com to make sure we only have a single copy.
+      root_path: /Workspace/PROD/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: prod_azuredatabricks_catalog
+      schema: gold_prod
+    permissions:
+      - group_name: admins
+        level: CAN_MANAGE
+
+
+

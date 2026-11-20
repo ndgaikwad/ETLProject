@@ -1,0 +1,21 @@
+resources:
+  jobs:
+    my_job:
+      name: my_job
+      tasks:
+        - task_key: import_notebook
+          notebook_task:
+            notebook_path: ../../src/notebooks/import_notebook.ipynb
+            source: WORKSPACE
+        - task_key: params
+          depends_on:
+            - task_key: import_notebook
+          notebook_task:
+            notebook_path: ../../src/notebooks/params.ipynb
+            base_parameters:
+              catalog_name: ${var.catalog}
+              schema_name: ${var.schema}
+            source: WORKSPACE
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED

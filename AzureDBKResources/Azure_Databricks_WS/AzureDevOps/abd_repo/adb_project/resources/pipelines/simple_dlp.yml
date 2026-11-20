@@ -1,0 +1,12 @@
+resources:
+  pipelines:
+    pipeline_simple_ldp:
+      name: simple_ldp
+      libraries:
+        - glob:
+            include: ../../src/pipelines/transformations/**
+      schema: default
+      photon: true
+      catalog: azuredatabricks_catalog
+      serverless: true
+      root_path: ../../src/pipelines
